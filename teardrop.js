@@ -7,11 +7,12 @@ var TWO_PI = 2 * Math.PI;
 
 var TEARDROP_M_VALUE = 0;
 var TEARDROP_ANGLE = 0;
+var TEARDROP_ANGLE_BASE_STEP = TWO_PI / 5;
 var MAX_TEARDROP_M_VALUE = 5;
 var TEARDROP_FUNCTIONS = [];
 var TEADROP_REL_SPACING = 0.03;
 var TEARDROP_SPACING;
-var MAX_TEARDROP_FUNCTIONS = 15;
+var MAX_TEARDROP_FUNCTIONS = 35;
 
 var MOUSE_POS = {"x": 0, "y": 0};
 var BOARD_CANVAS;
@@ -126,5 +127,7 @@ function refreshTeardropParams() {
             (centeredRelCanvasY * centeredRelCanvasY));
 
     TEARDROP_M_VALUE = centeredRelDistance * MAX_TEARDROP_M_VALUE;
-    TEARDROP_ANGLE = (TWO_PI - Math.atan2(-centeredRelCanvasY, centeredRelCanvasX)) + Math.PI;
+
+    //TEARDROP_ANGLE = (TWO_PI - Math.atan2(-centeredRelCanvasY, centeredRelCanvasX)) + Math.PI;
+    TEARDROP_ANGLE += TEARDROP_ANGLE_BASE_STEP * Math.max(0, centeredRelDistance);
 }
