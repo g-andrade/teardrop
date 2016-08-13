@@ -24,7 +24,7 @@ function init() {
     $(window).on('resize', onResize);
 
     MOUSE_POS = {
-        "x": BOARD_CANVAS.width / 2, 
+        "x": BOARD_CANVAS.width / 2,
         "y": BOARD_CANVAS.height / 2};
 
     setInterval(
@@ -33,7 +33,7 @@ function init() {
                 TEARDROP_FUNCTIONS.push(
                     newTeardropFunction(TEARDROP_M_VALUE, TEARDROP_ANGLE));
                     render();
-                
+
                 if (TEARDROP_FUNCTIONS.length > MAX_TEARDROP_FUNCTIONS) {
                     TEARDROP_FUNCTIONS = TEARDROP_FUNCTIONS.slice(
                             TEARDROP_FUNCTIONS.length - MAX_TEARDROP_FUNCTIONS,
@@ -83,7 +83,7 @@ function newTeardropFunction(m, teardropAngle) {
         };
         var generatedAngle = Math.atan2(baseXY.y, baseXY.x);
         var generatedMagnitude = Math.sqrt(
-                (baseXY.x * baseXY.x) + 
+                (baseXY.x * baseXY.x) +
                 (baseXY.y * baseXY.y));
         var rotatedXY = {
             "x": generatedMagnitude * Math.cos(generatedAngle + teardropAngle),
