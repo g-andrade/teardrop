@@ -9,10 +9,14 @@ var TEARDROP_M_VALUE = 0;
 var TEARDROP_ANGLE = 0;
 var TEARDROP_ANGLE_BASE_STEP = TWO_PI / 5;
 var MAX_TEARDROP_M_VALUE = 5;
-var TEARDROP_FUNCTIONS = [];
-var TEADROP_REL_SPACING = 0.03;
-var TEARDROP_SPACING;
+var TEARDROP_FUNCTION_CONTOURS = [];
 var MAX_TEARDROP_FUNCTIONS = 30;
+
+var TEARDROP_SPACING;
+var TEARDROP_REL_SPACING = 0.03;
+var BASE_TEARDROP_SPACING;
+var BASE_TEARDROP_REL_SPACING = 0.0;
+var BASE_TEARDROP_REL_SPACING_REL_GROWTH = 0.1;
 
 var MOUSE_POS = {"x": 0, "y": 0};
 var BOARD_CANVAS;
@@ -30,18 +34,45 @@ function init() {
     setInterval(
     //$("#whiteboard").bind("click",
             function (e) {
-                TEARDROP_FUNCTIONS.push(
-                    newTeardropFunction(TEARDROP_M_VALUE, TEARDROP_ANGLE));
-                    render();
-
-                if (TEARDROP_FUNCTIONS.length > MAX_TEARDROP_FUNCTIONS) {
-                    TEARDROP_FUNCTIONS = TEARDROP_FUNCTIONS.slice(
-                            TEARDROP_FUNCTIONS.length - MAX_TEARDROP_FUNCTIONS,
-                            TEARDROP_FUNCTIONS.length);
+                var teardropFunction = newTeardropFunction(TEARDROP_M_VALUE, TEARDROP_ANGLE);
+                var contourTotalSlices = 201;
+                functionCountours = new Array(contourTotalSlices);
+                for (sliceIndex = 0; sliceIndex < contourTotalSlices; sliceIndex++) {
+                    angle = ((sliceIndex / contourTotalSlices) * TWO_PI);
+                    polarCoordinates = teardropFunction(angle);
+                    functionCountours[sliceIndex] = polarCoordinates;
                 }
+
+                // two extra for easier interpolation
+                firstPolarCoordinates = functionCountours[functionCountours.length - 1];
+                firstPolarCoordinates.angle -= TWO_PI;
+                functionCountours.unshift(firstPolarCoordinates);
+                lastPolarCoordinates = functionCountours[1];
+                lastPolarCoordinates.angle += TWO_PI;
+                functionCountours.push(lastPolarCoordinates);
+
+                functionCountours.sort(comparePolarAngles);
+                TEARDROP_FUNCTION_CONTOURS.push(functionCountours);
+
+                if (TEARDROP_FUNCTION_CONTOURS.length > MAX_TEARDROP_FUNCTIONS) {
+                    TEARDROP_FUNCTION_CONTOURS = TEARDROP_FUNCTION_CONTOURS.slice(
+                            TEARDROP_FUNCTION_CONTOURS.length - MAX_TEARDROP_FUNCTIONS,
+                            TEARDROP_FUNCTION_CONTOURS.length);
+                }
+                BASE_TEARDROP_REL_SPACING = 0;
+                BASE_TEARDROP_SPACING = 0;
             //});
             },
+            50);
+
+    setInterval(
+            function (e) {
+                render();
+                BASE_TEARDROP_REL_SPACING += (TEARDROP_REL_SPACING * BASE_TEARDROP_REL_SPACING_REL_GROWTH);
+                BASE_TEARDROP_SPACING = Math.min(BOARD_CANVAS.width, BOARD_CANVAS.height) * BASE_TEARDROP_REL_SPACING;
+            },
             100);
+
 
     $("#whiteboard").bind("mousemove",
             function (e) {
@@ -64,7 +95,8 @@ function onResize() {
     BOARD_CANVAS.width = boundingRect.width;
     BOARD_CANVAS.height = boundingRect.height;
     BOARD_CANVAS_CTX = BOARD_CANVAS.getContext("2d");
-    TEARDROP_SPACING = Math.min(BOARD_CANVAS.width, BOARD_CANVAS.height) * TEADROP_REL_SPACING;
+    TEARDROP_SPACING = Math.min(BOARD_CANVAS.width, BOARD_CANVAS.height) * TEARDROP_REL_SPACING;
+    BASE_TEARDROP_SPACING = Math.min(BOARD_CANVAS.width, BOARD_CANVAS.height) * BASE_TEARDROP_REL_SPACING;
     render();
 }
 
@@ -98,53 +130,44 @@ function newTeardropFunction(m, teardropAngle) {
 function render() {
     refreshTeardropParams();
     BOARD_CANVAS_CTX.clearRect(0, 0, BOARD_CANVAS.width, BOARD_CANVAS.height);
-    var functionIndex, sliceIndex, angle, magnitude, polarCoordinates;
-    var contourTotalSlices = 11;
-    var contoursPerFunction = new Array(TEARDROP_FUNCTIONS.length);
+    var functionIndex, sliceIndex, angle, magnitude;
+    var polarCoordinates, firstPolarCoordinates, lastPolarCoordinates;
 
-    for (functionIndex = (TEARDROP_FUNCTIONS.length - 1);
-            functionIndex >= 0; functionIndex--)
-    {
-        functionCountours = new Array(contourTotalSlices);
-        for (sliceIndex = 0; sliceIndex < contourTotalSlices; sliceIndex++) {
-            angle = ((sliceIndex / contourTotalSlices) * TWO_PI);
-            polarCoordinates = TEARDROP_FUNCTIONS[functionIndex](angle);
-            functionCountours[sliceIndex] = polarCoordinates;
-        }
-        functionCountours.sort(comparePolarAngles);
-        contoursPerFunction[functionIndex] = functionCountours;
-    }
-
-    var renderTotalSlices = 10;
+    var renderTotalSlices = 50;
     var renderXAccumulators = new Array(renderTotalSlices);
     var renderYAccumulators = new Array(renderTotalSlices);
     for (var i = 0; i < renderTotalSlices; i++) {
         renderXAccumulators[i] = BOARD_CANVAS.width / 2;
         renderYAccumulators[i] = BOARD_CANVAS.height / 2;
     }
-    for (functionIndex = (TEARDROP_FUNCTIONS.length - 1);
+    for (functionIndex = (TEARDROP_FUNCTION_CONTOURS.length - 1);
             functionIndex >= 0; functionIndex--)
     {
-        functionCountours = contoursPerFunction[functionIndex];
+        functionCountours = TEARDROP_FUNCTION_CONTOURS[functionIndex];
         for (sliceIndex = 0; sliceIndex < renderTotalSlices; sliceIndex++) {
             angle = ((sliceIndex / renderTotalSlices) * TWO_PI) - Math.PI;
             magnitude = interpolateMagnitudeFromContour(functionCountours, angle);
             //console.log("angle " + angle + ", magnitude " + magnitude);
             var xOffset = Math.cos(angle) * magnitude;
             var yOffset = Math.sin(angle) * magnitude;
-            renderXAccumulators[sliceIndex] += TEARDROP_SPACING * xOffset;
-            renderYAccumulators[sliceIndex] += TEARDROP_SPACING * yOffset;
+
+            var teardropSpacing = (
+                    functionIndex == (TEARDROP_FUNCTION_CONTOURS.length - 1) ?
+                    BASE_TEARDROP_SPACING : TEARDROP_SPACING);
+            renderXAccumulators[sliceIndex] += teardropSpacing * xOffset;
+            renderYAccumulators[sliceIndex] += teardropSpacing * yOffset;
             var x = renderXAccumulators[sliceIndex];
             var y = renderYAccumulators[sliceIndex];
+
             if (sliceIndex === 0) {
-                // first
+                // first slice
                 BOARD_CANVAS_CTX.beginPath();
                 BOARD_CANVAS_CTX.moveTo(x, y);
                 continue;
             }
             BOARD_CANVAS_CTX.lineTo(x, y);
             if (sliceIndex == (renderTotalSlices - 1)) {
-                // last
+                // last slice
                 BOARD_CANVAS_CTX.closePath();
                 BOARD_CANVAS_CTX.strokeStyle="#FF0000";
                 BOARD_CANVAS_CTX.stroke();
@@ -161,15 +184,11 @@ function interpolateMagnitudeFromContour(sortedContours, angle, leftIndex, right
 
     var left = sortedContours[leftIndex];
     var right = sortedContours[rightIndex];
-    if (leftIndex == (rightIndex - 1)) {
+    if ((leftIndex == (rightIndex - 1)) || (angle < left.angle) || (angle > right.angle)) {
         var angleDiff = right.angle - left.angle;
         var relAngle = angle - left.angle;
         return (left.magnitude + ((relAngle / angleDiff) * (right.magnitude - left.magnitude)));
     }
-    if (angle < left.angle)
-        return left.magnitude;
-    if (angle > right.angle)
-        return right.magnitude;
 
     var middleIndex = leftIndex + Math.floor((rightIndex - leftIndex) / 2);
     var middle = sortedContours[middleIndex];
@@ -197,6 +216,6 @@ function refreshTeardropParams() {
 
     TEARDROP_M_VALUE = centeredRelDistance * MAX_TEARDROP_M_VALUE;
 
-    //TEARDROP_ANGLE = (TWO_PI - Math.atan2(-centeredRelCanvasY, centeredRelCanvasX)) + Math.PI;
-    TEARDROP_ANGLE += TEARDROP_ANGLE_BASE_STEP * Math.max(0, centeredRelDistance);
+    TEARDROP_ANGLE = (TWO_PI - Math.atan2(-centeredRelCanvasY, centeredRelCanvasX)) + Math.PI;
+    //TEARDROP_ANGLE += TEARDROP_ANGLE_BASE_STEP * Math.max(0, centeredRelDistance);
 }
