@@ -96,19 +96,37 @@ function newTeardropFunction(m, teardropAngle) {
 function render() {
     refreshTeardropParams();
     BOARD_CANVAS_CTX.clearRect(0, 0, BOARD_CANVAS.width, BOARD_CANVAS.height);
-    var totalSlices = 300;
-    for (var sliceIndex = 0; sliceIndex < totalSlices; sliceIndex++) {
-        var angle = ((sliceIndex / totalSlices) * TWO_PI);
-        var x = BOARD_CANVAS.width / 2;
-        var y = BOARD_CANVAS.height / 2;
-        for (var functionIndex = (TEARDROP_FUNCTIONS.length - 1); 
-                functionIndex >= 0; functionIndex--) 
-        {
+    var totalSlices = 50;
+    var xAccumulators = new Array(totalSlices);
+    var yAccumulators = new Array(totalSlices);
+    for (var i = 0; i < totalSlices; i++) {
+        xAccumulators[i] = BOARD_CANVAS.width / 2;
+        yAccumulators[i] = BOARD_CANVAS.height / 2;
+    }
+
+    for (var functionIndex = (TEARDROP_FUNCTIONS.length - 1);
+            functionIndex >= 0; functionIndex--)
+    {
+        for (var sliceIndex = 0; sliceIndex < totalSlices; sliceIndex++) {
+            var angle = ((sliceIndex / totalSlices) * TWO_PI);
             var xyOffset = TEARDROP_FUNCTIONS[functionIndex](angle);
-            x += TEARDROP_SPACING * xyOffset.x;
-            y += TEARDROP_SPACING * xyOffset.y;
-            BOARD_CANVAS_CTX.fillStyle = "#FF0000";
-            BOARD_CANVAS_CTX.fillRect(x, y, 1, 1);
+            xAccumulators[sliceIndex] += TEARDROP_SPACING * xyOffset.x;
+            yAccumulators[sliceIndex] += TEARDROP_SPACING * xyOffset.y;
+            var x = xAccumulators[sliceIndex];
+            var y = yAccumulators[sliceIndex];
+            if (sliceIndex === 0) {
+                // first
+                BOARD_CANVAS_CTX.beginPath();
+                BOARD_CANVAS_CTX.moveTo(x, y);
+                continue;
+            }
+            BOARD_CANVAS_CTX.lineTo(x, y);
+            if (sliceIndex == (totalSlices - 1)) {
+                // last
+                BOARD_CANVAS_CTX.closePath();
+                BOARD_CANVAS_CTX.strokeStyle="#FF0000";
+                BOARD_CANVAS_CTX.stroke();
+            }
         }
     }
 }
