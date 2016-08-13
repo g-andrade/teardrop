@@ -6,13 +6,14 @@
 body, html { 
     height: 100%; 
     overflow: hidden;
+    background-color: black;
 }
 
 #whiteboard {
     position: absolute;
-    left: 2%;
-    width: 96%;
-    top: 2%;
-    height: 96%;
-    border: 1px solid black;
+    left: 1%;
+    width: 98%;
+    top: 1%;
+    height: 98%;
+    border: 0px solid black;
 }

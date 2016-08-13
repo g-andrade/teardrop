@@ -8,23 +8,33 @@ var TWO_PI = 2 * Math.PI;
 var TEARDROP_M_VALUE = 0;
 var TEARDROP_ANGLE = 0;
 var TEARDROP_ANGLE_BASE_STEP = TWO_PI / 5;
-var MAX_TEARDROP_M_VALUE = 5;
-var TEARDROP_FUNCTION_CONTOURS = [];
-var MAX_TEARDROP_FUNCTIONS = 30;
+var MIN_TEARDROP_M_VALUE = 0;
+var MAX_TEARDROP_M_VALUE = 20;
+var TEARDROP_FUNCTION_PARAMS = [];
+var MAX_TEARDROP_FUNCTIONS = 40;
+var HARD_MAX_TEADROP_FUNCTIONS = 50;
 
 var TEARDROP_SPACING;
-var TEARDROP_REL_SPACING = 0.03;
+var TEARDROP_REL_SPACING = 0.02;
 var BASE_TEARDROP_SPACING;
 var BASE_TEARDROP_REL_SPACING = 0.0;
 var BASE_TEARDROP_REL_SPACING_REL_GROWTH = 0.1;
 
-var MOUSE_POS = {"x": 0, "y": 0};
 var BOARD_CANVAS;
 var BOARD_CANVAS_CTX;
 
+var CURRENT_POSITION = {"x": 0, "y": 0};
+var MOUSE_POS = {"x": 0, "y": 0};
+var CANVAS_MOUSE_POS = {"x": 0, "y": 0};
+var TARGET_APPROACH_VELOCITY = {"x": 0, "y": 0};
+var TARGET_MAGNITUDE = 0.0;
+var TARGET_VISUAL_ANGLE = 0.0;
+var MAX_TARGET_APPROACH_REL_VEL_MAGNITUDE = 0.1; // relative units per second
+var MAX_TARGET_APPROACH_VEL_MAGNITUDE = {"x": 0, "y": 0}; // pixels per second
+
 function init() {
     BOARD_CANVAS = $("#whiteboard")[0];
-    onResize();
+    onResize(true);
     $(window).on('resize', onResize);
 
     MOUSE_POS = {
@@ -32,10 +42,16 @@ function init() {
         "y": BOARD_CANVAS.height / 2};
 
     setInterval(
+            function (e) {
+                updatePosition();
+            },
+            50);
+
+    setInterval(
     //$("#whiteboard").bind("click",
             function (e) {
                 var teardropFunction = newTeardropFunction(TEARDROP_M_VALUE, TEARDROP_ANGLE);
-                var contourTotalSlices = 201;
+                var contourTotalSlices = 1001;
                 functionCountours = new Array(contourTotalSlices);
                 for (sliceIndex = 0; sliceIndex < contourTotalSlices; sliceIndex++) {
                     angle = ((sliceIndex / contourTotalSlices) * TWO_PI);
@@ -52,12 +68,18 @@ function init() {
                 functionCountours.push(lastPolarCoordinates);
 
                 functionCountours.sort(comparePolarAngles);
-                TEARDROP_FUNCTION_CONTOURS.push(functionCountours);
 
-                if (TEARDROP_FUNCTION_CONTOURS.length > MAX_TEARDROP_FUNCTIONS) {
-                    TEARDROP_FUNCTION_CONTOURS = TEARDROP_FUNCTION_CONTOURS.slice(
-                            TEARDROP_FUNCTION_CONTOURS.length - MAX_TEARDROP_FUNCTIONS,
-                            TEARDROP_FUNCTION_CONTOURS.length);
+                functionParams = {
+                    "countours": functionCountours,
+                    "strokeStyle": colorToColorStr(newColor())
+                };
+
+                TEARDROP_FUNCTION_PARAMS.push(functionParams);
+
+                if (TEARDROP_FUNCTION_PARAMS.length > MAX_TEARDROP_FUNCTIONS) {
+                    TEARDROP_FUNCTION_PARAMS = TEARDROP_FUNCTION_PARAMS.slice(
+                            TEARDROP_FUNCTION_PARAMS.length - MAX_TEARDROP_FUNCTIONS,
+                            TEARDROP_FUNCTION_PARAMS.length);
                 }
                 BASE_TEARDROP_REL_SPACING = 0;
                 BASE_TEARDROP_SPACING = 0;
@@ -73,6 +95,12 @@ function init() {
             },
             100);
 
+    setInterval(
+            function (e) {
+                if (MAX_TEARDROP_FUNCTIONS < HARD_MAX_TEADROP_FUNCTIONS)
+                    MAX_TEARDROP_FUNCTIONS++;
+            },
+            5000);
 
     $("#whiteboard").bind("mousemove",
             function (e) {
@@ -90,13 +118,49 @@ function init() {
             });
 }
 
-function onResize() {
+function colorToColorStr(color) {
+    return '#' + ('000000' + color.toString(16)).slice(-6);
+}
+
+var COLOR_RANGE_LEN = 128;
+var NEW_COLOR_IDX = Math.floor(Math.random() * COLOR_RANGE_LEN);
+
+function newColor() {
+    // based on: http://krazydad.com/tutorials/makecolors.php
+    var baseColorFreq = TARGET_MAGNITUDE * 0.1;
+    var frequency1 = 0.05 + baseColorFreq;
+    var frequency2 = 0.03 + baseColorFreq;
+    var frequency3 = 0.02 + baseColorFreq;
+    var phase1 = 0;
+    var phase2 = 2;
+    var phase3 = 4;
+    var center = 128;
+    var width = 127;
+    var len = 50;
+
+    var red = Math.sin(frequency1*NEW_COLOR_IDX + phase1) * width + center;
+    var greenn = Math.sin(frequency2*NEW_COLOR_IDX + phase2) * width + center;
+    var blue = Math.sin(frequency3*NEW_COLOR_IDX + phase3) * width + center;
+    NEW_COLOR_IDX++;
+    if (NEW_COLOR_IDX > COLOR_RANGE_LEN) {
+        NEW_COLOR_IDX = 0;
+    }
+    return (red << 16) | (greenn << 8) | blue;
+}
+
+function onResize(isFirst) {
     var boundingRect = BOARD_CANVAS.getBoundingClientRect();
     BOARD_CANVAS.width = boundingRect.width;
     BOARD_CANVAS.height = boundingRect.height;
     BOARD_CANVAS_CTX = BOARD_CANVAS.getContext("2d");
     TEARDROP_SPACING = Math.min(BOARD_CANVAS.width, BOARD_CANVAS.height) * TEARDROP_REL_SPACING;
     BASE_TEARDROP_SPACING = Math.min(BOARD_CANVAS.width, BOARD_CANVAS.height) * BASE_TEARDROP_REL_SPACING;
+    MAX_TARGET_APPROACH_VEL_MAGNITUDE.x = MAX_TARGET_APPROACH_REL_VEL_MAGNITUDE * BOARD_CANVAS.width;
+    MAX_TARGET_APPROACH_VEL_MAGNITUDE.y = MAX_TARGET_APPROACH_REL_VEL_MAGNITUDE * BOARD_CANVAS.height;
+    if (isFirst) {
+        CURRENT_POSITION = {"x": BOARD_CANVAS.width / 2, "y": BOARD_CANVAS.height / 2};
+    }
+    updatePosition();
     render();
 }
 
@@ -136,14 +200,18 @@ function render() {
     var renderTotalSlices = 50;
     var renderXAccumulators = new Array(renderTotalSlices);
     var renderYAccumulators = new Array(renderTotalSlices);
+    var prevFunctionPoints = [];
     for (var i = 0; i < renderTotalSlices; i++) {
-        renderXAccumulators[i] = BOARD_CANVAS.width / 2;
-        renderYAccumulators[i] = BOARD_CANVAS.height / 2;
+        renderXAccumulators[i] = CURRENT_POSITION.x;
+        renderYAccumulators[i] = CURRENT_POSITION.y;
     }
-    for (functionIndex = (TEARDROP_FUNCTION_CONTOURS.length - 1);
+    for (functionIndex = (TEARDROP_FUNCTION_PARAMS.length - 1);
             functionIndex >= 0; functionIndex--)
     {
-        functionCountours = TEARDROP_FUNCTION_CONTOURS[functionIndex];
+        functionParams = TEARDROP_FUNCTION_PARAMS[functionIndex];
+        functionCountours = functionParams.countours;
+        functionStrokeStyle = functionParams.strokeStyle;
+        var functionPoints = [];
         for (sliceIndex = 0; sliceIndex < renderTotalSlices; sliceIndex++) {
             angle = ((sliceIndex / renderTotalSlices) * TWO_PI) - Math.PI;
             magnitude = interpolateMagnitudeFromContour(functionCountours, angle);
@@ -152,12 +220,13 @@ function render() {
             var yOffset = Math.sin(angle) * magnitude;
 
             var teardropSpacing = (
-                    functionIndex == (TEARDROP_FUNCTION_CONTOURS.length - 1) ?
+                    functionIndex == (TEARDROP_FUNCTION_PARAMS.length - 1) ?
                     BASE_TEARDROP_SPACING : TEARDROP_SPACING);
             renderXAccumulators[sliceIndex] += teardropSpacing * xOffset;
             renderYAccumulators[sliceIndex] += teardropSpacing * yOffset;
             var x = renderXAccumulators[sliceIndex];
             var y = renderYAccumulators[sliceIndex];
+            functionPoints.push({"x":x, "y": y});
 
             if (sliceIndex === 0) {
                 // first slice
@@ -168,11 +237,27 @@ function render() {
             BOARD_CANVAS_CTX.lineTo(x, y);
             if (sliceIndex == (renderTotalSlices - 1)) {
                 // last slice
+                if (prevFunctionPoints.length > 0) {
+                    for (var prevFunctionPointsIndex = prevFunctionPoints.length - 1;
+                            prevFunctionPointsIndex >= 0;
+                            prevFunctionPointsIndex--)
+                    {
+                        var prevPoint = prevFunctionPoints[prevFunctionPointsIndex];
+                        BOARD_CANVAS_CTX.lineTo(prevPoint.x, prevPoint.y);
+                    }
+                    BOARD_CANVAS_CTX.lineTo(
+                            prevFunctionPoints[prevFunctionPoints.length - 1].x,
+                            prevFunctionPoints[prevFunctionPoints.length - 1].y);
+                    BOARD_CANVAS_CTX.lineTo(x, y);
+                }
                 BOARD_CANVAS_CTX.closePath();
-                BOARD_CANVAS_CTX.strokeStyle="#FF0000";
+                BOARD_CANVAS_CTX.fillStyle = functionStrokeStyle;
+                BOARD_CANVAS_CTX.fill();
+                BOARD_CANVAS_CTX.strokeStyle = functionStrokeStyle;
                 BOARD_CANVAS_CTX.stroke();
             }
         }
+        prevFunctionPoints = functionPoints;
     }
 }
 
@@ -201,21 +286,61 @@ function comparePolarAngles(polarCoordinatesA, polarCoordinatesB) {
     return polarCoordinatesA.angle - polarCoordinatesB.angle;
 }
 
+var INITIAL_TEADROPPARAMS_TIMESTAMP = Date.now();
+var ROTATION_VELOCITY = Math.PI; // radians per second
+
 function refreshTeardropParams() {
-    var canvasBoundingRect = BOARD_CANVAS.getBoundingClientRect();
-    var canvasYXRatio = BOARD_CANVAS.height / BOARD_CANVAS.width;
-    var canvasX = MOUSE_POS.x - canvasBoundingRect.left;
-    var canvasY = MOUSE_POS.y - canvasBoundingRect.top;
-    var relCanvasX = canvasX / BOARD_CANVAS.width;
-    var relCanvasY = canvasY / BOARD_CANVAS.height;
-    var centeredRelCanvasX = (relCanvasX - 0.5) * 2.0;
-    var centeredRelCanvasY = ((relCanvasY - 0.5) * 2.0) * canvasYXRatio;
-    var centeredRelDistance = Math.sqrt(
-            (centeredRelCanvasX * centeredRelCanvasX) +
-            (centeredRelCanvasY * centeredRelCanvasY));
+    var currentTimestamp = Date.now();
+    var ellapsedMilliseconds = currentTimestamp - INITIAL_TEADROPPARAMS_TIMESTAMP;
+    var timeFactor = ellapsedMilliseconds / 1000;
 
-    TEARDROP_M_VALUE = centeredRelDistance * MAX_TEARDROP_M_VALUE;
+    TEARDROP_M_VALUE = MIN_TEARDROP_M_VALUE + (TARGET_MAGNITUDE * (MAX_TEARDROP_M_VALUE - MIN_TEARDROP_M_VALUE));
+    //TEARDROP_ANGLE = TARGET_VISUAL_ANGLE + ((0.1 + TARGET_MAGNITUDE) * timeFactor * ROTATION_VELOCITY);
+    TEARDROP_ANGLE = TARGET_VISUAL_ANGLE;
+}
 
-    TEARDROP_ANGLE = (TWO_PI - Math.atan2(-centeredRelCanvasY, centeredRelCanvasX)) + Math.PI;
-    //TEARDROP_ANGLE += TEARDROP_ANGLE_BASE_STEP * Math.max(0, centeredRelDistance);
+var LAST_UPDATE_POSITION_TIMESTAMP = Date.now();
+
+function updatePosition() {
+    var currentTimestamp = Date.now();
+    var ellapsedMilliseconds = currentTimestamp - LAST_UPDATE_POSITION_TIMESTAMP;
+    var timeFactor = ellapsedMilliseconds / 1000;
+    LAST_UPDATE_POSITION_TIMESTAMP = Date.now();
+
+    updateCanvasMousePos();
+    var vectorX = CANVAS_MOUSE_POS.x - CURRENT_POSITION.x;
+    var vectorY = CANVAS_MOUSE_POS.y - CURRENT_POSITION.y;
+    var relVectorX = vectorX / BOARD_CANVAS.width;
+    var relVectorY = vectorY / BOARD_CANVAS.height;
+    var relVectorAngle = Math.atan2(relVectorY, relVectorX);
+    var relVectorMagnitude = Math.sqrt((relVectorX * relVectorX) + (relVectorY * relVectorY));
+    TARGET_VISUAL_ANGLE = Math.atan2(
+            relVectorY * (BOARD_CANVAS.height / BOARD_CANVAS.width),
+            relVectorX);
+    TARGET_MAGNITUDE = relVectorMagnitude;
+
+    var targetApproachVelXMagnitude = timeFactor * MAX_TARGET_APPROACH_VEL_MAGNITUDE.x;
+    var targetApproachVelYMagnitude = timeFactor * MAX_TARGET_APPROACH_VEL_MAGNITUDE.y;
+    targetApproachVelXMagnitude *= (
+            relVectorMagnitude < MAX_TARGET_APPROACH_REL_VEL_MAGNITUDE ?
+            Math.sqrt(relVectorMagnitude / MAX_TARGET_APPROACH_REL_VEL_MAGNITUDE) :
+            1);
+    targetApproachVelYMagnitude *= (
+            relVectorMagnitude < MAX_TARGET_APPROACH_REL_VEL_MAGNITUDE ?
+            Math.sqrt(relVectorMagnitude / MAX_TARGET_APPROACH_REL_VEL_MAGNITUDE) :
+            1);
+    TARGET_APPROACH_VELOCITY.x = (targetApproachVelXMagnitude * Math.cos(relVectorAngle));
+    TARGET_APPROACH_VELOCITY.y = (targetApproachVelYMagnitude * Math.sin(relVectorAngle));
+    CURRENT_POSITION.x += TARGET_APPROACH_VELOCITY.x;
+    CURRENT_POSITION.y += TARGET_APPROACH_VELOCITY.y;
+    CURRENT_POSITION.x = Math.max(0, Math.min(BOARD_CANVAS.width, CURRENT_POSITION.x));
+    CURRENT_POSITION.y = Math.max(0, Math.min(BOARD_CANVAS.height, CURRENT_POSITION.y));
+}
+
+function updateCanvasMousePos() {
+    var boundingRect = BOARD_CANVAS.getBoundingClientRect();
+    CANVAS_MOUSE_POS = {
+        "x": MOUSE_POS.x - boundingRect.left,
+        "y": MOUSE_POS.y - boundingRect.top
+    };
 }
