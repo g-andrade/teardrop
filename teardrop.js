@@ -12,7 +12,7 @@ var MAX_TEARDROP_M_VALUE = 5;
 var TEARDROP_FUNCTIONS = [];
 var TEADROP_REL_SPACING = 0.03;
 var TEARDROP_SPACING;
-var MAX_TEARDROP_FUNCTIONS = 35;
+var MAX_TEARDROP_FUNCTIONS = 30;
 
 var MOUSE_POS = {"x": 0, "y": 0};
 var BOARD_CANVAS;
@@ -72,7 +72,10 @@ function canonicalAngle(angle) {
     // sigh....
     /*var ratio = angle / TWO_PI;
     return TWO_PI * (ratio - Math.floor(ratio));*/
-    return Math.fmod(angle, TWO_PI);
+    var res = Math.fmod(angle, TWO_PI);
+    res = (res >= 0 ? res : (TWO_PI - res));
+    res = (res >= Math.PI ? res - TWO_PI : res);
+    return res;
 }
 
 function newTeardropFunction(m, teardropAngle) {
@@ -85,35 +88,54 @@ function newTeardropFunction(m, teardropAngle) {
         var generatedMagnitude = Math.sqrt(
                 (baseXY.x * baseXY.x) +
                 (baseXY.y * baseXY.y));
-        var rotatedXY = {
-            "x": generatedMagnitude * Math.cos(generatedAngle + teardropAngle),
-            "y": generatedMagnitude * Math.sin(generatedAngle + teardropAngle)
+        return {
+            "angle": canonicalAngle(generatedAngle + teardropAngle),
+            "magnitude": generatedMagnitude
         };
-        return rotatedXY;
     };
 }
 
 function render() {
     refreshTeardropParams();
     BOARD_CANVAS_CTX.clearRect(0, 0, BOARD_CANVAS.width, BOARD_CANVAS.height);
-    var totalSlices = 50;
-    var xAccumulators = new Array(totalSlices);
-    var yAccumulators = new Array(totalSlices);
-    for (var i = 0; i < totalSlices; i++) {
-        xAccumulators[i] = BOARD_CANVAS.width / 2;
-        yAccumulators[i] = BOARD_CANVAS.height / 2;
-    }
+    var functionIndex, sliceIndex, angle, magnitude, polarCoordinates;
+    var contourTotalSlices = 11;
+    var contoursPerFunction = new Array(TEARDROP_FUNCTIONS.length);
 
-    for (var functionIndex = (TEARDROP_FUNCTIONS.length - 1);
+    for (functionIndex = (TEARDROP_FUNCTIONS.length - 1);
             functionIndex >= 0; functionIndex--)
     {
-        for (var sliceIndex = 0; sliceIndex < totalSlices; sliceIndex++) {
-            var angle = ((sliceIndex / totalSlices) * TWO_PI);
-            var xyOffset = TEARDROP_FUNCTIONS[functionIndex](angle);
-            xAccumulators[sliceIndex] += TEARDROP_SPACING * xyOffset.x;
-            yAccumulators[sliceIndex] += TEARDROP_SPACING * xyOffset.y;
-            var x = xAccumulators[sliceIndex];
-            var y = yAccumulators[sliceIndex];
+        functionCountours = new Array(contourTotalSlices);
+        for (sliceIndex = 0; sliceIndex < contourTotalSlices; sliceIndex++) {
+            angle = ((sliceIndex / contourTotalSlices) * TWO_PI);
+            polarCoordinates = TEARDROP_FUNCTIONS[functionIndex](angle);
+            functionCountours[sliceIndex] = polarCoordinates;
+        }
+        functionCountours.sort(comparePolarAngles);
+        contoursPerFunction[functionIndex] = functionCountours;
+    }
+
+    var renderTotalSlices = 10;
+    var renderXAccumulators = new Array(renderTotalSlices);
+    var renderYAccumulators = new Array(renderTotalSlices);
+    for (var i = 0; i < renderTotalSlices; i++) {
+        renderXAccumulators[i] = BOARD_CANVAS.width / 2;
+        renderYAccumulators[i] = BOARD_CANVAS.height / 2;
+    }
+    for (functionIndex = (TEARDROP_FUNCTIONS.length - 1);
+            functionIndex >= 0; functionIndex--)
+    {
+        functionCountours = contoursPerFunction[functionIndex];
+        for (sliceIndex = 0; sliceIndex < renderTotalSlices; sliceIndex++) {
+            angle = ((sliceIndex / renderTotalSlices) * TWO_PI) - Math.PI;
+            magnitude = interpolateMagnitudeFromContour(functionCountours, angle);
+            //console.log("angle " + angle + ", magnitude " + magnitude);
+            var xOffset = Math.cos(angle) * magnitude;
+            var yOffset = Math.sin(angle) * magnitude;
+            renderXAccumulators[sliceIndex] += TEARDROP_SPACING * xOffset;
+            renderYAccumulators[sliceIndex] += TEARDROP_SPACING * yOffset;
+            var x = renderXAccumulators[sliceIndex];
+            var y = renderYAccumulators[sliceIndex];
             if (sliceIndex === 0) {
                 // first
                 BOARD_CANVAS_CTX.beginPath();
@@ -121,7 +143,7 @@ function render() {
                 continue;
             }
             BOARD_CANVAS_CTX.lineTo(x, y);
-            if (sliceIndex == (totalSlices - 1)) {
+            if (sliceIndex == (renderTotalSlices - 1)) {
                 // last
                 BOARD_CANVAS_CTX.closePath();
                 BOARD_CANVAS_CTX.strokeStyle="#FF0000";
@@ -129,6 +151,35 @@ function render() {
             }
         }
     }
+}
+
+function interpolateMagnitudeFromContour(sortedContours, angle, leftIndex, rightIndex) {
+    if (leftIndex === undefined)
+        leftIndex = 0;
+    if (rightIndex === undefined)
+        rightIndex = sortedContours.length - 1;
+
+    var left = sortedContours[leftIndex];
+    var right = sortedContours[rightIndex];
+    if (leftIndex == (rightIndex - 1)) {
+        var angleDiff = right.angle - left.angle;
+        var relAngle = angle - left.angle;
+        return (left.magnitude + ((relAngle / angleDiff) * (right.magnitude - left.magnitude)));
+    }
+    if (angle < left.angle)
+        return left.magnitude;
+    if (angle > right.angle)
+        return right.magnitude;
+
+    var middleIndex = leftIndex + Math.floor((rightIndex - leftIndex) / 2);
+    var middle = sortedContours[middleIndex];
+    if (angle < middle.angle)
+        return interpolateMagnitudeFromContour(sortedContours, angle, leftIndex, middleIndex);
+    return interpolateMagnitudeFromContour(sortedContours, angle, middleIndex, rightIndex);
+}
+
+function comparePolarAngles(polarCoordinatesA, polarCoordinatesB) {
+    return polarCoordinatesA.angle - polarCoordinatesB.angle;
 }
 
 function refreshTeardropParams() {
